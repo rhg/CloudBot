@@ -1,3 +1,4 @@
+drops {user} off in the Texas desert.
 smacks {user} in the face with a burlap sack full of broken glass.
 swaps {user}'s shampoo with glue.
 installs Windows Vista on {user}'s computer.
