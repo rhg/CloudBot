@@ -64,17 +64,42 @@ def on_start(bot):
     wunder_key = bot.config.get("api_keys", {}).get("wunderground", None)
 
 
-@hook.command("weather", "we")
-def weather(text, reply):
+@hook.command("weather", "we", autohelp=False)
+def weather(text, reply, db, nick, bot, notice):
     """weather <location> -- Gets weather data for <location>."""
     if not wunder_key:
         return "This command requires a Weather Underground API key."
     if not dev_key:
         return "This command requires a Google Developers Console API key."
 
+    # initialise weather DB
+    db.execute("create table if not exists weather(nick primary key, loc)")
+
+    # if there is no input, try getting the users last location from the DB
+    if not text:
+        location = db.execute("select loc from weather where nick=lower(:nick)",
+                              {"nick": nick}).fetchone()
+        if not location:
+            # no location saved in the database, send the user help text
+            notice(weather.__doc__)
+            return
+        loc = location[0]
+
+        # no need to save a location, we already have it
+        dontsave = True
+    else:
+        # see if the input ends with "dontsave"
+        dontsave = text.endswith(" dontsave")
+
+        # remove "dontsave" from the input string after checking for it
+        if dontsave:
+            loc = text[:-9].strip().lower()
+        else:
+            loc = text
+
     # use find_location to get location data from the user input
     try:
-        location_data = find_location(text)
+        location_data = find_location(loc)
     except APIError as e:
         return e
 
@@ -116,6 +141,11 @@ def weather(text, reply):
         weather_data['url'] = web.shorten(response["current_observation"]['forecast_url'])
     else:
         weather_data['url'] = web.shorten(response["current_observation"]['ob_url'])
+
+    if loc and not dontsave:
+        db.execute("insert or replace into weather(nick, loc) values (:nick, :loc)",
+                   {"nick": nick.lower(), "loc": loc})
+        db.commit()
 
     reply("{place} - \x02Current:\x02 {conditions}, {temp_f}F/{temp_c}C, {humidity}, "
           "Wind: {wind_mph}MPH/{wind_kph}KPH {wind_direction}, \x02Today:\x02 {today_conditions}, "
