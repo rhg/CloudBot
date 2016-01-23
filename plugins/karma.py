@@ -8,7 +8,7 @@ from cloudbot import hook
 from cloudbot.util import timeformat, database
 
 
-CAN_DOWNVOTE = False
+CAN_DOWNVOTE = True
 TIME_LIMIT = 300.0
 
 
@@ -72,7 +72,31 @@ def allowed(uid):
         return True, 0
 
 
-karma_re = re.compile('^([a-z0-9_\-\[\]\\^{}|`]{3,})(\+\+|\-\-)$', re.I)
+karma_re = re.compile('^([a-z0-9_\-\[\]\\^{}''|`]{3,})(\+\+|\-\-)$', re.I)
+clj_karma_re = re.compile(r'^\((inc|dec|identity) (.+)\)$', re.I)
+
+@hook.regex(clj_karma_re)
+def karma2_add(match, nick, conn, db, notice):
+    nick_vote = match.group(2).strip()
+    if nick.lower() == nick_vote.lower():
+        notice("You can't vote on yourself!")
+        return
+
+    uid = ":".join([conn.name, nick, nick_vote]).lower()
+    vote_allowed, when = allowed(uid)
+
+    # print(match.group(1) == 'identity')
+    if match.group(1) == 'identity':
+        return _karma(nick_vote, db)
+    elif vote_allowed:
+        if match.group(1) == 'inc':
+            # up(db, nick_vote)
+            notice("Gave {} 1 karma!".format(nick_vote))
+        elif match.group(1) == 'dec' and CAN_DOWNVOTE:
+            # down(db, nick_vote)
+            notice("Took away 1 karma from {}.".format(nick_vote))
+    else:
+        notice("You are trying to vote too often. You can vote on this user again in {}!".format(when))
 
 
 @hook.regex(karma_re)
@@ -98,8 +122,8 @@ def karma_add(match, nick, conn, db, notice):
         notice("You are trying to vote too often. You can vote on this user again in {}!".format(when))
 
 
-@hook.command('karma', 'k')
-def karma(text, db):
+
+def _karma(text, db):
     """k/karma <nick> -- returns karma stats for <nick>"""
     query = db.execute(
         select([karma_table])
@@ -111,6 +135,7 @@ def karma(text, db):
     else:
         return "{} has \x02{}\x02 karma!".format(text, query['up_karma'] - query['down_karma'])
 
+karma = hook.command('karma', 'k')(_karma)
 
 @hook.command('loved')
 def loved(db):
